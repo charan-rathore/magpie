@@ -90,6 +90,18 @@ func SubscriptionUsage(ctx context.Context) []SubscriptionQuota {
 	return visibleQuotas(c.data)
 }
 
+// Quotas returns the same unified allowance and balance list the Usage page
+// shows. Vendor calls run concurrently, since one slow balance endpoint should
+// not hold up the other providers. Cached values are reused by each source.
+func Quotas(ctx context.Context) []SubscriptionQuota {
+	balances := make(chan []SubscriptionQuota, 1)
+	plans := make(chan []SubscriptionQuota, 1)
+	go func() { balances <- KeyBalances(ctx) }()
+	go func() { plans <- PlanQuotas(ctx) }()
+	out := append(SubscriptionUsage(ctx), <-plans...)
+	return append(out, <-balances...)
+}
+
 // visibleQuotas drops accounts removed from magpie since the last refresh.
 func visibleQuotas(all []SubscriptionQuota) []SubscriptionQuota {
 	hidden := map[string]bool{}

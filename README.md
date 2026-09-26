@@ -60,6 +60,21 @@ and there is a terminal version (`magpie tui`) and a plain CLI.
 - **Real logos, no framework.** Plain HTML over the system webview; brand
   icons from [lobehub/icons](https://github.com/lobehub/lobe-icons).
 
+## Allowances from the CLI
+
+`magpie quotas` shows the same provider allowances and API-key balances as
+Usage in the desktop app. `magpie quotas --json` prints an array for scripts:
+
+```sh
+magpie quotas --json
+```
+
+Each row names the provider and account (or key), its plan if known, its
+allowance windows with percent used and reset time, or its API-key balance.
+Providers that cannot be reached report an `error` on their own row; providers
+without a quota/balance endpoint have no row. This is read-only. The existing
+`magpie accounts --json` is for subscription accounts only.
+
 ## Agents
 
 | Agent        | File                              | Fields          |

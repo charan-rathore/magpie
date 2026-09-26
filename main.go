@@ -67,6 +67,7 @@ const usage = `magpie — one place to pick every agent's model
 
   magpie serve                    run the gateway alone (the app runs it too)
   magpie usage [today|7d|30d|all] tokens and cost per agent and model (30d)
+  magpie quotas [--json]          remaining subscription allowances and API-key balances
   magpie sync                     refresh the model catalog and vendor model lists
   magpie agents                   list every supported agent
   magpie update [check]           install the newest release (check: only say if there is one)
@@ -170,6 +171,8 @@ func run(args []string) error {
 		return accountsCmd(args)
 	case "usage":
 		return usageCmd(args)
+	case "quotas":
+		return quotasCmd(args)
 	case "update":
 		return updateCmd(args)
 	case "library", "lib":

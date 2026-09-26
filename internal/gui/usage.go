@@ -73,11 +73,6 @@ func usageRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/usage/quotas", func(rw http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 12*time.Second)
 		defer cancel()
-		balances := make(chan []provider.SubscriptionQuota, 1)
-		plans := make(chan []provider.SubscriptionQuota, 1)
-		go func() { balances <- provider.KeyBalances(ctx) }()
-		go func() { plans <- provider.PlanQuotas(ctx) }()
-		out := append(provider.SubscriptionUsage(ctx), <-plans...)
-		writeJSON(rw, append(out, <-balances...))
+		writeJSON(rw, provider.Quotas(ctx))
 	})
 }
