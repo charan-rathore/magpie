@@ -466,3 +466,71 @@ func TestGeminiNonImageFileTranslation(t *testing.T) {
 		})
 	}
 }
+
+// Chat Completions only permits text in a tool message. A tool_result image
+// cannot be converted to a Chat image_url in that role or silently discarded.
+func TestAnthropicToolResultImageTranslation(t *testing.T) {
+	const toolImage = `{"type":"tool_result","tool_use_id":"call_1","content":[{"type":"image","source":{"type":"base64","media_type":"image/png","data":"aGVsbG8="}}]}`
+	const mixedToolImage = `{"type":"tool_result","tool_use_id":"call_1","content":[{"type":"text","text":"screenshot"},{"type":"image","source":{"type":"base64","media_type":"image/png","data":"aGVsbG8="}}]}`
+	const textTool = `{"type":"tool_result","tool_use_id":"call_1","content":[{"type":"text","text":"all clear"}]}`
+	const userImage = `{"type":"image","source":{"type":"base64","media_type":"image/png","data":"aGVsbG8="}}`
+	for _, tc := range []struct {
+		name, endpoint, block string
+		wantCode              int
+		wantImage             bool
+	}{
+		{"tool image to Chat", "chat", toolImage, 400, false},
+		{"mixed tool image to Chat", "chat", mixedToolImage, 400, false},
+		{"text tool to Chat", "chat", textTool, 200, false},
+		{"user image to Chat", "chat", userImage, 200, true},
+		{"tool image Anthropic passthrough", "anthropic", toolImage, 200, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fresh(t)
+			var sent string
+			up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				body, _ := io.ReadAll(r.Body)
+				sent = string(body)
+				if tc.endpoint == "chat" {
+					w.Header().Set("Content-Type", "text/event-stream")
+					io.WriteString(w, sse(
+						`data: {"id":"x","choices":[{"delta":{"content":"ok"}}]}`,
+						`data: {"id":"x","choices":[{"delta":{},"finish_reason":"stop"}]}`,
+						`data: [DONE]`,
+					))
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				io.WriteString(w, `{"id":"x","type":"message","role":"assistant","content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}`)
+			}))
+			t.Cleanup(up.Close)
+			p := provider.Provider{ID: "probe", Key: "key", Models: []string{"eye"}}
+			if tc.endpoint == "chat" {
+				p.Chat = up.URL + "/v1"
+			} else {
+				p.Anthropic = up.URL
+			}
+			if err := provider.Save(p); err != nil {
+				t.Fatal(err)
+			}
+			if err := catalog.SaveLive("probe", up.URL, []catalog.Model{{ID: "eye", Images: true, ImageInput: imageInputBool(true)}}); err != nil {
+				t.Fatal(err)
+			}
+			body := `{"model":"probe/eye","max_tokens":16,"messages":[{"role":"user","content":[` + tc.block + `]}]}`
+			rec := httptest.NewRecorder()
+			New().Handler().ServeHTTP(rec, httptest.NewRequest("POST", "/v1/messages", strings.NewReader(body)))
+			if rec.Code != tc.wantCode {
+				t.Fatalf("status %d, want %d: %s", rec.Code, tc.wantCode, rec.Body.String())
+			}
+			if tc.wantCode == 400 {
+				if sent != "" || !strings.Contains(rec.Body.String(), "tool messages accept text only") {
+					t.Fatalf("tool image was sent or error unclear: upstream=%s response=%s", sent, rec.Body.String())
+				}
+				return
+			}
+			if (strings.Contains(sent, "aGVsbG8=")) != tc.wantImage {
+				t.Fatalf("image presence in upstream request = %v, want %v: %s", strings.Contains(sent, "aGVsbG8="), tc.wantImage, sent)
+			}
+		})
+	}
+}
