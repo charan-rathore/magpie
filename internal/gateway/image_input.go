@@ -36,6 +36,20 @@ func hasImage(proto provider.Protocol, body []byte) bool {
 	return err == found
 }
 
+// hasToolResultImage finds an image nested in an Anthropic tool_result.
+// Chat Completions tool messages accept text only, even when the model sees
+// images in user messages. Such an image must not be silently dropped.
+func hasToolResultImage(proto provider.Protocol, body []byte) bool {
+	found := errors.New("tool-result image")
+	_, err := walkImages(proto, body, func(im imageAt) (json.RawMessage, error) {
+		if im.Tool {
+			return nil, found
+		}
+		return nil, nil
+	})
+	return err == found
+}
+
 // imageAt is an image in a request, where it is.
 type imageAt struct {
 	// Src is the image as a URL, a data: URL for one sent inline; empty for
