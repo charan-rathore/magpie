@@ -1404,6 +1404,10 @@ func wrongEndpoint(status int, body []byte) bool {
 // one to it. The provider is always streamed; the client gets whichever
 // it asked for.
 func (s *Server) translate(w http.ResponseWriter, r *http.Request, p provider.Provider, from, to provider.Protocol, model string, body []byte, u *Usage) (int, string) {
+	if from == provider.Anthropic && to == provider.Chat && hasToolResultImage(from, body) {
+		msg := "cannot translate an Anthropic tool_result image to Chat Completions: tool messages accept text only"
+		return writeError(w, from, 400, msg), msg
+	}
 	request, err := parse(from, body)
 	if err != nil {
 		return writeError(w, from, 400, err.Error()), err.Error()
