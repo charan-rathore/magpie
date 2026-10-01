@@ -116,6 +116,9 @@ type Request struct {
 	// Anthropic upstream: a relay that serves only Claude Code turns a
 	// request without it away (#359).
 	Metadata json.RawMessage
+	// ClientMetadata is a Responses client's harness metadata, preserved
+	// only when rebuilding a request for a Responses upstream.
+	ClientMetadata json.RawMessage
 	// GeminiCompat is the upstream being Gemini's OpenAI-compatible API
 	// (AI Studio's, or a proxy in front of it on this machine or the LAN),
 	// which gives the model's thoughts only when asked in thinking_config.

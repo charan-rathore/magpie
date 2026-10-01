@@ -124,6 +124,7 @@ type rRequest struct {
 	ParallelToolCalls *bool           `json:"parallel_tool_calls,omitempty"`
 	ServiceTier       string          `json:"service_tier,omitempty"`
 	PromptCacheKey    string          `json:"prompt_cache_key,omitempty"`
+	ClientMetadata    json.RawMessage `json:"client_metadata,omitempty"`
 	Include           []string        `json:"include,omitempty"`
 	Reasoning         *struct {
 		Effort  string `json:"effort,omitempty"`
@@ -139,7 +140,7 @@ func parseResponses(body []byte) (*Request, error) {
 		return nil, fmt.Errorf("invalid request: %v", err)
 	}
 	r := &Request{Model: q.Model, System: q.Instructions, MaxTokens: q.MaxOutputTokens, Temp: q.Temperature,
-		TopP: q.TopP, Stream: q.Stream, Parallel: q.ParallelToolCalls, Fast: q.ServiceTier == "priority", CacheKey: q.PromptCacheKey, Include: q.Include}
+		TopP: q.TopP, Stream: q.Stream, Parallel: q.ParallelToolCalls, Fast: q.ServiceTier == "priority", CacheKey: q.PromptCacheKey, Include: q.Include, ClientMetadata: q.ClientMetadata}
 	if q.Reasoning != nil {
 		r.Effort = effortOf(q.Reasoning.Effort)
 		r.Thinking = true
@@ -406,6 +407,9 @@ func buildResponses(r *Request, model, host string, rejectTemp bool) []byte {
 	out := map[string]any{"model": model, "input": input, "stream": r.Stream, "store": false}
 	if r.CacheKey != "" {
 		out["prompt_cache_key"] = r.CacheKey
+	}
+	if len(r.ClientMetadata) > 0 {
+		out["client_metadata"] = r.ClientMetadata
 	}
 	if r.System != "" {
 		out["instructions"] = r.System
