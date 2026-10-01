@@ -198,3 +198,38 @@ func TestGrokExecutableFinds(t *testing.T) {
 		t.Fatalf("GROK_BIN_DIR: %q", p)
 	}
 }
+
+func TestGrokBodyDropsToolChoiceWithoutTools(t *testing.T) {
+	for _, input := range []string{
+		`{"tool_choice":"auto"}`,
+		`{"reasoning":{"effort":"low"},"tool_choice":"auto"}`,
+		`{"tools":[],"tool_choice":"required"}`,
+		`{"tools":null,"tool_choice":{"type":"function","name":"shell"}}`,
+		`{"tools":[{"type":"custom","name":"apply_patch"}],"tool_choice":"auto"}`,
+		`{"tools":[{"type":"namespace","name":"agents"}],"tool_choice":{"type":"function","name":"shell"}}`,
+	} {
+		t.Run(input, func(t *testing.T) {
+			var got map[string]any
+			if err := json.Unmarshal(grokBody([]byte(input)), &got); err != nil {
+				t.Fatal(err)
+			}
+			if _, ok := got["tool_choice"]; ok {
+				t.Fatalf("tool choice retained without supported tools: %s", grokBody([]byte(input)))
+			}
+		})
+	}
+}
+
+func TestGrokBodyPreservesToolChoiceWithSupportedTools(t *testing.T) {
+	for _, choice := range []string{`"auto"`, `"required"`, `{"type":"function","name":"shell"}`} {
+		input := `{"tools":[{"type":"function","name":"shell"}],"tool_choice":` + choice + `}`
+		if got := string(grokBody([]byte(input))); got != input {
+			t.Fatalf("supported tool choice changed: %s", got)
+		}
+	}
+	for _, input := range []string{`{"input":[],"max_output_tokens":100}`, `not json`, `null`} {
+		if got := string(grokBody([]byte(input))); got != input {
+			t.Fatalf("body without a tool choice changed: %s", got)
+		}
+	}
+}

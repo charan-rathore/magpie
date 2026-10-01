@@ -206,7 +206,7 @@ var grokTools = map[string]bool{"function": true, "web_search": true, "x_search"
 // can't read the encrypted reasoning beside ("Could not decode the
 // compaction blob"), so a null content goes.
 func grokBody(body []byte) []byte {
-	if !bytes.Contains(body, []byte(`"tools"`)) && !bytes.Contains(body, []byte(`"reasoning"`)) {
+	if !bytes.Contains(body, []byte(`"tools"`)) && !bytes.Contains(body, []byte(`"reasoning"`)) && !bytes.Contains(body, []byte(`"tool_choice"`)) {
 		return body
 	}
 	dec := json.NewDecoder(bytes.NewReader(body))
@@ -238,6 +238,12 @@ func grokBody(body []byte) []byte {
 				delete(m, "tool_choice")
 				dirty = true
 			}
+		}
+	}
+	if tools, ok := m["tools"].([]any); !ok || len(tools) == 0 {
+		if _, ok := m["tool_choice"]; ok {
+			delete(m, "tool_choice")
+			dirty = true
 		}
 	}
 	input, _ := m["input"].([]any)
