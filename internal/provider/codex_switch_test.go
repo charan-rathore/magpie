@@ -171,3 +171,33 @@ func mustJSONRaw(t *testing.T, v any) json.RawMessage {
 	}
 	return b
 }
+
+// An account is spent when the window that renews next is at 98%, or any
+// window is at 100%. The week at 98% with the five hours roomy is not (#530).
+func TestSpentJudgesTheWindowThatRenewsNext(t *testing.T) {
+	soon, later := time.Now().Add(3*time.Hour), time.Now().Add(39*time.Hour)
+	win := func(used float64, at *time.Time) QuotaWindow {
+		return QuotaWindow{Name: "w", Used: used, ResetsAt: at}
+	}
+	cases := []struct {
+		name string
+		ws   []QuotaWindow
+		want bool
+	}{
+		{"week at 98, five hours roomy", []QuotaWindow{win(0, &soon), win(98, &later)}, false},
+		{"order of the windows does not matter", []QuotaWindow{win(98, &later), win(0, &soon)}, false},
+		{"five hours at 98", []QuotaWindow{win(98, &soon), win(10, &later)}, true},
+		{"week at 100 stops it whatever the five hours say", []QuotaWindow{win(0, &soon), win(100, &later)}, true},
+		{"only window at 98", []QuotaWindow{win(98, &later)}, true},
+		{"only window at 97", []QuotaWindow{win(97, &later)}, false},
+		{"renewal told in seconds", []QuotaWindow{{Used: 0, ResetSecs: 10800}, {Used: 98, ResetSecs: 140400}}, false},
+		{"a window without a renewal is weighed as before", []QuotaWindow{win(0, &soon), {Used: 98}}, true},
+		{"aside and per-model windows are ignored", []QuotaWindow{win(0, &soon), {Used: 99, ResetsAt: &later, Aside: true}, {Used: 99, ResetsAt: &later, Model: "opus"}}, false},
+		{"no windows", nil, false},
+	}
+	for _, c := range cases {
+		if got := spent(SubscriptionQuota{Windows: c.ws}); got != c.want {
+			t.Errorf("%s: spent = %v, want %v", c.name, got, c.want)
+		}
+	}
+}

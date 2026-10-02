@@ -60,9 +60,36 @@ func usedUp(q SubscriptionQuota) bool {
 }
 
 // spent reports whether an account's allowance is all but used up, as
-// Smart routing counts it: a window for every model at SpentShare.
+// Smart routing counts it: a window for every model at 100%, or the window
+// that renews next at SpentShare. A longer window at SpentShare with the
+// short one in front of it still roomy (the week at 98%, the five hours at
+// 0%) leaves the account usable for now: the upstream says when it is out.
+// Windows that don't tell when they renew are all weighed, as before.
 func spent(q SubscriptionQuota) bool {
-	return usedPast(q, SpentShare)
+	if usedPast(q, 100) {
+		return true
+	}
+	now := time.Now()
+	var next *QuotaWindow
+	var soonest time.Time
+	for i, w := range q.Windows {
+		if w.Aside || w.Model != "" {
+			continue
+		}
+		at := time.Time{}
+		switch {
+		case w.ResetsAt != nil:
+			at = *w.ResetsAt
+		case w.ResetSecs > 0:
+			at = now.Add(time.Duration(w.ResetSecs) * time.Second)
+		default:
+			return usedPast(q, SpentShare)
+		}
+		if next == nil || at.Before(soonest) {
+			next, soonest = &q.Windows[i], at
+		}
+	}
+	return next != nil && next.Used >= SpentShare
 }
 
 func usedPast(q SubscriptionQuota, share float64) bool {
