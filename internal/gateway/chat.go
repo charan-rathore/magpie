@@ -745,47 +745,81 @@ type chatDecoder struct {
 	tool    int    // index of the open tool call, -1 for none
 	toolID  string // id of the open tool call, as some relays repeat it on every fragment
 	choice  string // index of the first choice seen; an empty string means none yet
-	// Gemini's OpenAI-compatible API, asked for thoughts, may give them
-	// in the text as a leading <thought>…</thought>: lead holds the text
-	// while it could still be that tag's start, thought is being inside it
+	// A Chat model's thoughts may come in the text as a leading tagged
+	// block: lead holds the text while it could still be a tag's start,
+	// thought is being inside one, tClose the close of the tag it opened
 	lead    string
 	thought bool
+	tClose  string
 	past    bool // the reply's text has begun; no tag is looked for now
 }
 
-const thoughtOpen, thoughtClose = "<thought>", "</thought>"
+// thoughtTags are the wrappers a leading block of a Chat reply's text is
+// thinking in: <thought>…</thought>, AI Studio's OpenAI-compatible
+// endpoint's spelling of Gemini's thoughts, and <think>…</think>, the one
+// Minimax-M3's content carries (#1267), as DeepSeek's and Qwen's relays
+// spell it too. Only a tag at the very start of the reply is thinking; a
+// later one stays text.
+var thoughtTags = []string{"<thought>", "<think>"}
 
-// text sends a piece of the reply's text, a leading <thought> block of it
+// thoughtTagOpen gives the wrapper lead starts with, "" when none.
+func thoughtTagOpen(lead string) string {
+	for _, o := range thoughtTags {
+		if strings.HasPrefix(lead, o) {
+			return o
+		}
+	}
+	return ""
+}
+
+// thoughtTagAhead says whether lead could still grow into a wrapper: it
+// is shorter than one and is its start.
+func thoughtTagAhead(lead string) bool {
+	for _, o := range thoughtTags {
+		if len(lead) < len(o) && strings.HasPrefix(o, lead) {
+			return true
+		}
+	}
+	return false
+}
+
+// thoughtTagClose is the close for an open wrapper.
+func thoughtTagClose(open string) string {
+	return "</" + open[1:]
+}
+
+// text sends a piece of the reply's text, a leading thinking block of it
 // as thinking.
 func (d *chatDecoder) text(s string, emit func(Event)) {
 	if !d.past && !d.thought {
 		d.lead += s
 		lead := strings.TrimLeft(d.lead, " \n")
-		if len(lead) < len(thoughtOpen) && strings.HasPrefix(thoughtOpen, lead) {
-			return
-		}
-		if !strings.HasPrefix(lead, thoughtOpen) {
+		open := thoughtTagOpen(lead)
+		if open == "" {
+			if thoughtTagAhead(lead) {
+				return
+			}
 			d.past = true
 			s, d.lead = d.lead, ""
 			emit(Event{Kind: KText, Text: s})
 			return
 		}
-		s, d.lead, d.thought = strings.TrimPrefix(lead, thoughtOpen), "", true
+		s, d.lead, d.thought, d.tClose = strings.TrimPrefix(lead, open), "", true, thoughtTagClose(open)
 	}
 	if d.thought {
 		s = d.lead + s
 		d.lead = ""
-		if i := strings.Index(s, thoughtClose); i >= 0 {
+		if i := strings.Index(s, d.tClose); i >= 0 {
 			if i > 0 {
 				emit(Event{Kind: KThink, Text: s[:i]})
 			}
 			d.thought, d.past = false, true
-			s = strings.TrimLeft(s[i+len(thoughtClose):], "\n")
+			s = strings.TrimLeft(s[i+len(d.tClose):], "\n")
 		} else {
 			// the end of it may be the close tag begun
 			keep := 0
-			for n := min(len(thoughtClose)-1, len(s)); n > 0; n-- {
-				if strings.HasSuffix(s, thoughtClose[:n]) {
+			for n := min(len(d.tClose)-1, len(s)); n > 0; n-- {
+				if strings.HasSuffix(s, d.tClose[:n]) {
 					keep = n
 					break
 				}
