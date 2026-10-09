@@ -44,6 +44,7 @@ keys and accounts per request is in [Gateway routing and fallback](gateway-routi
 
 ## Constraints and failure behavior
 
+- A Codex routing account uses its saved workspace-aware name (`codexName`) for `Account.User`, as the saved-login and allowance lists do. Two Team workspaces of one email remain distinct routing candidates with their own allowance and per-account settings.
 - Each refresh token has exactly one holder. Vendors rotate tokens on refresh, so two copies of one token would sign each other out. `savedTokenMu` stops two requests refreshing one saved account at once.
 - A Claude subscription account is used only for Claude Code, through the genuine Claude Code binary (see [Claude subscription bridge](claude-subscription-bridge.md)).
 - Claude Code's `/usage` prints a reset with no year when it falls this year ("Oct 9, 2:59pm (UTC)"), or, in older versions, as a time alone ("3pm"). `claudeResetTime` reads it as the end of its window, so never further ahead than the window's length (5 hours for the session, 7 days for a week) and `claudeResetSlack`: a date is in the first of last year, this year and next that is less than a day past and no further ahead, a time alone the next one no further ahead. Where none is, as for a reading days old, it is the latest one already past, so the window reads as renewed rather than full for a year. Where the clocks go back and show a time twice, the reading not yet past is taken. A week's time alone read just after its reset still reads as tomorrow's.

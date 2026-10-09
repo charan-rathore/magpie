@@ -859,6 +859,9 @@ func codexAccount(home string) (Provider, bool) {
 	if acct.User == "" {
 		acct.User = "ChatGPT"
 	}
+	// Routing, allowance and per-account settings use the saved workspace's name.
+	auth, _ := json.Marshal(a)
+	acct.User = codexName(readLogins(), savedLogin{Agent: "codex", User: acct.User, Auth: auth})
 	acct.sign = codexSign(func(ctx context.Context) (string, string, error) { return codexToken(ctx, path) })
 	acct.body = codexBody
 	acct.models = catalog.Codex
